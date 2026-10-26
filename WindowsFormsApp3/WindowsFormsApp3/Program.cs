@@ -4,6 +4,15 @@ using System.Drawing.Drawing2D;
 using System.Text;
 using System.Windows.Forms;
 
+#if NET5_0_OR_GREATER
+[assembly: System.Runtime.Versioning.SupportedOSPlatform("windows")]
+#endif
+
+static class StructureLimits
+{
+    public const int MaximumCapacity = 20;
+}
+
 class Stack
 {
     private int[] _stackArray;
@@ -12,6 +21,8 @@ class Stack
 
     public Stack(int size)
     {
+        if (size <= 0) throw new ArgumentOutOfRangeException("size");
+
         _maxSize = size;
         _stackArray = new int[_maxSize];
         _top = -1;
@@ -44,7 +55,21 @@ class Stack
 
     public int GetCount() { return _top + 1; }
 
-    public int GetItem(int index) { return _stackArray[index]; }
+    public int GetItem(int index)
+    {
+        if (index < 0 || index > _top) throw new ArgumentOutOfRangeException("index");
+        return _stackArray[index];
+    }
+
+    public bool Resize(int newSize)
+    {
+        if (newSize <= 0 || newSize > StructureLimits.MaximumCapacity || newSize < GetCount()) return false;
+        int[] resizedArray = new int[newSize];
+        Array.Copy(_stackArray, resizedArray, GetCount());
+        _stackArray = resizedArray;
+        _maxSize = newSize;
+        return true;
+    }
 }
 
 class Queue
@@ -103,6 +128,19 @@ class Queue
         if (logicalIndex < 0 || logicalIndex >= _count) throw new ArgumentOutOfRangeException("logicalIndex");
         return _queueArray[(_front + logicalIndex) % _maxSize];
     }
+
+    public bool Resize(int newSize)
+    {
+        if (newSize <= 0 || newSize > StructureLimits.MaximumCapacity || newSize < _count) return false;
+        int[] resizedArray = new int[newSize];
+        for (int i = 0; i < _count; i++)
+            resizedArray[i] = GetItem(i);
+        _queueArray = resizedArray;
+        _maxSize = newSize;
+        _front = 0;
+        _rear = _count == 0 ? -1 : _count - 1;
+        return true;
+    }
 }
 
 class HeaderPanel : Panel
@@ -115,6 +153,7 @@ class HeaderPanel : Panel
 
     protected override void OnPaint(PaintEventArgs e)
     {
+        base.OnPaint(e);
         Graphics g = e.Graphics;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
@@ -124,19 +163,21 @@ class HeaderPanel : Panel
             g.FillRectangle(bg, ClientRectangle);
         }
 
-        StringFormat center = new StringFormat();
-        center.Alignment = StringAlignment.Center;
-        center.LineAlignment = StringAlignment.Center;
-
-        using (Font titleFont = new Font("Segoe UI", 17, FontStyle.Bold))
-        using (Font subFont = new Font("Segoe UI", 9))
-        using (Brush white = new SolidBrush(Color.White))
-        using (Brush soft = new SolidBrush(Color.FromArgb(205, 220, 240)))
+        using (StringFormat center = new StringFormat())
         {
-            g.DrawString("STACK OPERATIONS", titleFont, white,
-                new RectangleF(0, 6, Width, 36), center);
-            g.DrawString("Array-based structures  |  Stack LIFO, Queue FIFO", subFont, soft,
-                new RectangleF(0, 40, Width, 22), center);
+            center.Alignment = StringAlignment.Center;
+            center.LineAlignment = StringAlignment.Center;
+
+            using (Font titleFont = new Font("Segoe UI", 17, FontStyle.Bold))
+            using (Font subFont = new Font("Segoe UI", 9))
+            using (Brush white = new SolidBrush(Color.White))
+            using (Brush soft = new SolidBrush(Color.FromArgb(205, 220, 240)))
+            {
+                g.DrawString("STACK OPERATIONS", titleFont, white,
+                    new RectangleF(0, 6, Width, 36), center);
+                g.DrawString("Array-based structures  |  Stack LIFO, Queue FIFO", subFont, soft,
+                    new RectangleF(0, 40, Width, 22), center);
+            }
         }
     }
 }
@@ -156,6 +197,10 @@ class StackContainer : Panel
 
     public void SetSnapshot(int maxSize, int[] items)
     {
+        if (maxSize <= 0) throw new ArgumentOutOfRangeException("maxSize");
+        if (items == null) throw new ArgumentNullException("items");
+        if (items.Length > maxSize) throw new ArgumentException("The snapshot cannot exceed the container capacity.", "items");
+
         _maxSize = maxSize;
         _items = (int[])items.Clone();
         Invalidate();
@@ -164,7 +209,7 @@ class StackContainer : Panel
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        if (_maxSize <= 0) return;
+        if (_maxSize <= 0 || ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
 
         Graphics g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -186,15 +231,10 @@ class StackContainer : Panel
         Color blue = Color.FromArgb(3, 102, 214);
         Color grayText = Color.FromArgb(140, 150, 162);
 
-        StringFormat center = new StringFormat();
-        center.Alignment = StringAlignment.Center;
-        center.LineAlignment = StringAlignment.Center;
-        StringFormat rightAlign = new StringFormat();
-        rightAlign.Alignment = StringAlignment.Far;
-        rightAlign.LineAlignment = StringAlignment.Center;
-
         float fontSize = Math.Max(6f, Math.Min(14f, slotH * 0.4f));
 
+        using (StringFormat center = new StringFormat())
+        using (StringFormat rightAlign = new StringFormat())
         using (Font valueFont = new Font("Segoe UI", fontSize, FontStyle.Bold))
         using (Font indexFont = new Font("Segoe UI", 9))
         using (Font topFont = new Font("Segoe UI", 10, FontStyle.Bold))
@@ -202,6 +242,11 @@ class StackContainer : Panel
         using (Brush grayBrush = new SolidBrush(grayText))
         using (Brush greenBrush = new SolidBrush(green))
         {
+            center.Alignment = StringAlignment.Center;
+            center.LineAlignment = StringAlignment.Center;
+            rightAlign.Alignment = StringAlignment.Far;
+            rightAlign.LineAlignment = StringAlignment.Center;
+
             for (int i = 0; i < max; i++)
             {
                 RectangleF slot = new RectangleF(left, bottom - (i + 1) * slotH, right - left, slotH);
@@ -270,7 +315,7 @@ class StackContainer : Panel
                 });
                 g.DrawString("TOP", topFont, greenBrush,
                     new RectangleF(right + 26, cy - 12, 60, 24),
-                    new StringFormat { LineAlignment = StringAlignment.Center });
+                    center);
             }
         }
     }
@@ -291,6 +336,10 @@ class QueueContainer : Panel
 
     public void SetSnapshot(int maxSize, int[] items)
     {
+        if (maxSize <= 0) throw new ArgumentOutOfRangeException("maxSize");
+        if (items == null) throw new ArgumentNullException("items");
+        if (items.Length > maxSize) throw new ArgumentException("The snapshot cannot exceed the container capacity.", "items");
+
         _maxSize = maxSize;
         _items = (int[])items.Clone();
         Invalidate();
@@ -299,7 +348,7 @@ class QueueContainer : Panel
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        if (_maxSize <= 0) return;
+        if (_maxSize <= 0 || ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
 
         Graphics g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -380,11 +429,8 @@ class StackForm : Form
     private Color navy = Color.FromArgb(31, 58, 95);
     private Color lightBlue = Color.FromArgb(220, 230, 241);
 
-    public StackForm(int size)
+    public StackForm()
     {
-        stack = new Stack(size);
-        queue = new Queue(size);
-
         Text = "Stacks and Queues Laboratory";
         Size = new Size(1080, 720);
         MinimumSize = new Size(820, 560);
@@ -408,7 +454,7 @@ class StackForm : Form
         layout.Controls.Add(header, 0, 0);
         layout.SetColumnSpan(header, 2);
 
-        Panel logPanel = CreateSectionPanel("OPERATION LOG", 210);
+        Panel logPanel = CreateSectionPanel("OPERATION LOG", 250);
         logPanel.Margin = new Padding(12, 12, 6, 12);
         layout.Controls.Add(logPanel, 0, 1);
         TableLayoutPanel logLayout = (TableLayoutPanel)logPanel.Controls[0];
@@ -527,6 +573,17 @@ class StackForm : Form
 
     private void ShowStackMenu()
     {
+        if (stack == null)
+        {
+            int capacity = RequestCapacity("stack");
+            if (capacity == 0)
+            {
+                ShowMainMenu();
+                return;
+            }
+            stack = new Stack(capacity);
+            LogOperation("INIT", "Stack initialized with capacity " + capacity + ".");
+        }
         currentMode = "STACK";
         stackView.Visible = stackHasSnapshot;
         queueView.Visible = false;
@@ -538,12 +595,24 @@ class StackForm : Form
         AddMenuButton("Is Empty", Color.FromArgb(227, 131, 0), (s, e) => LogOperation("IS EMPTY", stack.IsEmpty() ? "The stack is empty." : "The stack is not empty."));
         AddMenuButton("Is Full", Color.FromArgb(227, 131, 0), (s, e) => LogOperation("IS FULL", stack.IsFull() ? "The stack is full." : "The stack is not full."));
         AddMenuButton("Display", Color.FromArgb(111, 66, 193), (s, e) => DoStackDisplay());
+        AddMenuButton("Resize", navy, (s, e) => DoResizeStack());
         AddMenuButton("Back to Main Menu", navy, (s, e) => ShowMainMenu());
         UpdateView();
     }
 
     private void ShowQueueMenu()
     {
+        if (queue == null)
+        {
+            int capacity = RequestCapacity("queue");
+            if (capacity == 0)
+            {
+                ShowMainMenu();
+                return;
+            }
+            queue = new Queue(capacity);
+            LogOperation("INIT", "Queue initialized with capacity " + capacity + ".");
+        }
         currentMode = "QUEUE";
         stackView.Visible = false;
         queueView.Visible = queueHasSnapshot;
@@ -555,8 +624,32 @@ class StackForm : Form
         AddMenuButton("Is Empty", Color.FromArgb(227, 131, 0), (s, e) => LogOperation("IS EMPTY", queue.IsEmpty() ? "The queue is empty." : "The queue is not empty."));
         AddMenuButton("Is Full", Color.FromArgb(227, 131, 0), (s, e) => LogOperation("IS FULL", queue.IsFull() ? "The queue is full." : "The queue is not full."));
         AddMenuButton("Display", Color.FromArgb(111, 66, 193), (s, e) => DoQueueDisplay());
+        AddMenuButton("Resize", navy, (s, e) => DoResizeQueue());
         AddMenuButton("Back to Main Menu", navy, (s, e) => ShowMainMenu());
         UpdateView();
+    }
+
+    private int RequestCapacity(string structureName)
+    {
+        while (true)
+        {
+            string input = Program.Prompt(
+                "Enter the " + structureName + " capacity (1 to " + StructureLimits.MaximumCapacity + "):",
+                "Initialize " + structureName,
+                "5");
+            if (input == null) return 0;
+
+            int capacity;
+            if (int.TryParse(input.Trim(), out capacity)
+                && capacity >= 1
+                && capacity <= StructureLimits.MaximumCapacity)
+            {
+                return capacity;
+            }
+
+            LogOperation("ERROR", "Enter a " + structureName + " capacity from 1 to "
+                + StructureLimits.MaximumCapacity + ".");
+        }
     }
 
     private void DoPush()
@@ -618,6 +711,22 @@ class StackForm : Form
         LogOperation("DISPLAY", message.ToString());
     }
 
+    private void DoResizeStack()
+    {
+        string input = Program.Prompt("Enter the new stack capacity (1 to " + StructureLimits.MaximumCapacity + "):",
+            "Resize Stack", stack.GetMaxSize().ToString());
+        if (input == null) return;
+        int newSize;
+        if (!int.TryParse(input.Trim(), out newSize)
+            || !stack.Resize(newSize))
+        {
+            LogOperation("ERROR", "Stack capacity must be from 1 to " + StructureLimits.MaximumCapacity
+                + " and cannot be less than the current item count (" + stack.GetCount() + ").");
+            return;
+        }
+        LogOperation("RESIZE", "Stack capacity changed to " + newSize + ". Display to refresh the visualization.");
+    }
+
     private void DoEnqueue()
     {
         if (queue.IsFull())
@@ -677,9 +786,27 @@ class StackForm : Form
         LogOperation("DISPLAY", message.ToString());
     }
 
+    private void DoResizeQueue()
+    {
+        string input = Program.Prompt("Enter the new queue capacity (1 to " + StructureLimits.MaximumCapacity + "):",
+            "Resize Queue", queue.GetMaxSize().ToString());
+        if (input == null) return;
+        int newSize;
+        if (!int.TryParse(input.Trim(), out newSize)
+            || !queue.Resize(newSize))
+        {
+            LogOperation("ERROR", "Queue capacity must be from 1 to " + StructureLimits.MaximumCapacity
+                + " and cannot be less than the current item count (" + queue.GetCount() + ").");
+            return;
+        }
+        LogOperation("RESIZE", "Queue capacity changed to " + newSize + ". Display to refresh the visualization.");
+    }
+
     private void DoPostfixEvaluation()
     {
-        string expression = Program.Prompt("Enter a postfix expression (single-digit operands):", "Postfix Evaluation", "");
+        string expression = Program.Prompt(
+            "Enter postfix values and operators. Separate multi-digit operands with spaces (example: 12 3 +):",
+            "Postfix Evaluation", "");
         if (expression == null) return;
         int result;
         string error;
@@ -730,9 +857,13 @@ class StackForm : Form
         }
         else
         {
-            statusLabel.Text = "Capacity: " + stack.GetMaxSize() + "  |  Choose an option from the menu.";
+            string stackCapacity = stack == null ? "Not initialized" : stack.GetMaxSize().ToString();
+            string queueCapacity = queue == null ? "Not initialized" : queue.GetMaxSize().ToString();
+            statusLabel.Text = "Stack capacity: " + stackCapacity
+                + "  |  Queue capacity: " + queueCapacity + "  |  Choose an option from the menu.";
         }
     }
+
 }
 // ---------------- Program class ----------------
 class Program
@@ -765,21 +896,42 @@ class Program
         error = null;
         if (expression == null) expression = "";
         Stack values = new Stack(Math.Max(1, expression.Length));
+        bool hasWhitespace = false;
+        for (int i = 0; i < expression.Length; i++)
+        {
+            if (char.IsWhiteSpace(expression[i]))
+            {
+                hasWhitespace = true;
+                break;
+            }
+        }
+
+        string[] tokens;
+        if (hasWhitespace)
+        {
+            tokens = expression.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+        }
+        else
+        {
+            tokens = new string[expression.Length];
+            for (int i = 0; i < expression.Length; i++)
+                tokens[i] = expression[i].ToString();
+        }
 
         try
         {
-            for (int i = 0; i < expression.Length; i++)
+            for (int i = 0; i < tokens.Length; i++)
             {
-                char token = expression[i];
-                if (char.IsWhiteSpace(token)) continue;
-                if (token >= '0' && token <= '9')
+                string token = tokens[i];
+                int operand;
+                if (int.TryParse(token, out operand) && operand >= 0)
                 {
-                    values.Push(token - '0');
+                    values.Push(operand);
                     continue;
                 }
-                if (token != '+' && token != '-' && token != '*' && token != '/')
+                if (token != "+" && token != "-" && token != "*" && token != "/")
                 {
-                    error = "Unsupported character '" + token + "'. Use single digits and +, -, *, / only.";
+                    error = "Unsupported token '" + token + "'. Use non-negative whole-number operands and +, -, *, / only.";
                     return false;
                 }
                 if (values.GetCount() < 2)
@@ -795,9 +947,9 @@ class Program
                 {
                     switch (token)
                     {
-                        case '+': intermediate = left + right; break;
-                        case '-': intermediate = left - right; break;
-                        case '*': intermediate = left * right; break;
+                        case "+": intermediate = left + right; break;
+                        case "-": intermediate = left - right; break;
+                        case "*": intermediate = left * right; break;
                         default:
                             if (right == 0)
                             {
@@ -829,53 +981,47 @@ class Program
     // Small input box (C# has no built-in one like Java's JOptionPane)
     public static string Prompt(string text, string title, string defaultValue)
     {
-        Form form = new Form();
-        form.Text = title;
-        form.ClientSize = new Size(300, 110);
-        form.StartPosition = FormStartPosition.CenterScreen;
-        form.FormBorderStyle = FormBorderStyle.FixedDialog;
-        form.MinimizeBox = false;
-        form.MaximizeBox = false;
+        using (Form form = new Form())
+        {
+            form.Text = title;
+            form.ClientSize = new Size(300, 110);
+            form.StartPosition = FormStartPosition.CenterScreen;
+            form.FormBorderStyle = FormBorderStyle.FixedDialog;
+            form.MinimizeBox = false;
+            form.MaximizeBox = false;
 
-        Label label = new Label();
-        label.Text = text;
-        label.SetBounds(10, 10, 280, 20);
+            Label label = new Label();
+            label.Text = text;
+            label.SetBounds(10, 10, 280, 20);
 
-        TextBox box = new TextBox();
-        box.Text = defaultValue;
-        box.SetBounds(10, 35, 280, 25);
+            TextBox box = new TextBox();
+            box.Text = defaultValue;
+            box.SetBounds(10, 35, 280, 25);
 
-        Button ok = new Button();
-        ok.Text = "OK";
-        ok.DialogResult = DialogResult.OK;
-        ok.SetBounds(130, 70, 75, 28);
+            Button ok = new Button();
+            ok.Text = "OK";
+            ok.DialogResult = DialogResult.OK;
+            ok.SetBounds(130, 70, 75, 28);
 
-        Button cancel = new Button();
-        cancel.Text = "Cancel";
-        cancel.DialogResult = DialogResult.Cancel;
-        cancel.SetBounds(215, 70, 75, 28);
+            Button cancel = new Button();
+            cancel.Text = "Cancel";
+            cancel.DialogResult = DialogResult.Cancel;
+            cancel.SetBounds(215, 70, 75, 28);
 
-        form.Controls.AddRange(new Control[] { label, box, ok, cancel });
-        form.AcceptButton = ok;
-        form.CancelButton = cancel;
+            form.Controls.AddRange(new Control[] { label, box, ok, cancel });
+            form.AcceptButton = ok;
+            form.CancelButton = cancel;
 
-        return form.ShowDialog() == DialogResult.OK ? box.Text : null;
+            return form.ShowDialog() == DialogResult.OK ? box.Text : null;
+        }
     }
 
     [STAThread]
     static void Main()
     {
         Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
 
-        // Ask for the size of the stack first
-        int size = 0;
-        while (size <= 0)
-        {
-            string input = Prompt("Enter the size of the stack:", "Stack Size", "5");
-            if (input == null) return; // user cancelled
-            if (!int.TryParse(input.Trim(), out size)) size = 0;
-        }
-
-        Application.Run(new StackForm(size));
+        Application.Run(new StackForm());
     }
 }
