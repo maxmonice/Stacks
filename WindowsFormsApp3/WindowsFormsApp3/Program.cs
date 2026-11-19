@@ -147,26 +147,38 @@ class Queue
 }
 
 // =====================================================================
-//  Design language: a black instrument panel.
-//  Near-black surfaces, light type, one electric blue. Blue marks the thing you are pointing at
-//  (top, front, reading head); red is reserved for errors.
+//  Design language: Data Structures, a dark "glass" desktop app.
+//  Near-black window, charcoal glass panes with a hairline highlight, one system blue.
+//  Blue marks what you are pointing at (top, front, reading head); red is reserved for errors.
 // =====================================================================
 
 static class Ui
 {
-    public static readonly Color Paper = Color.FromArgb(12, 13, 16);
-    public static readonly Color Paper2 = Color.FromArgb(25, 27, 34);
-    public static readonly Color Side = Color.FromArgb(17, 18, 22);
-    public static readonly Color Rule = Color.FromArgb(40, 43, 52);
-    public static readonly Color GridLine = Color.FromArgb(44, 47, 56);
-    public static readonly Color Line = Color.FromArgb(98, 103, 117);
-    public static readonly Color Ink = Color.FromArgb(232, 234, 240);
-    public static readonly Color Muted = Color.FromArgb(126, 131, 144);
-    public static readonly Color Accent = Color.FromArgb(82, 142, 255);
-    public static readonly Color AccentDk = Color.FromArgb(54, 108, 230);
-    public static readonly Color Err = Color.FromArgb(255, 112, 112);
+    public static readonly Color Paper = Color.FromArgb(8, 8, 10);      // window
+    public static readonly Color Glass = Color.FromArgb(24, 25, 29);    // pane surface
+    public static readonly Color Side = Glass;                          // alias: controls that sit on a pane
+    public static readonly Color Paper2 = Color.FromArgb(46, 47, 55);   // raised tile
+    public static readonly Color Well = Color.FromArgb(13, 14, 17);     // recessed track / field
+    public static readonly Color Rule = Color.FromArgb(43, 44, 51);
+    public static readonly Color Line = Color.FromArgb(88, 90, 100);
+    public static readonly Color Ink = Color.FromArgb(240, 241, 244);
+    public static readonly Color Muted = Color.FromArgb(136, 139, 150);
+    public static readonly Color Accent = Color.FromArgb(10, 132, 255);
+    public static readonly Color AccentDk = Color.FromArgb(0, 104, 214);
+    public static readonly Color Err = Color.FromArgb(255, 105, 97);
 
     private static Dictionary<string, Font> _fonts = new Dictionary<string, Font>();
+
+    private static bool Has(string family)
+    {
+        foreach (FontFamily f in FontFamily.Families) if (f.Name == family) return true;
+        return false;
+    }
+
+    // SF Pro is not on Windows; Segoe UI Variable is its closest cousin, then Segoe UI.
+    private static readonly bool Variable = Has("Segoe UI Variable Text");
+    private static readonly string SansName = Variable ? "Segoe UI Variable Text" : "Segoe UI";
+    private static readonly string MonoName = Has("Cascadia Mono") ? "Cascadia Mono" : "Consolas";
 
     public static Font F(string family, float size, FontStyle style)
     {
@@ -175,10 +187,10 @@ static class Ui
         if (!_fonts.TryGetValue(key, out f)) { f = new Font(family, size, style); _fonts[key] = f; }
         return f;
     }
-    public static Font Serif(float s, FontStyle st) { return (st & FontStyle.Bold) != 0 ? F("Segoe UI Semibold", s, FontStyle.Regular) : F("Segoe UI", s, FontStyle.Regular); }
-    public static Font Mono(float s, FontStyle st) { return F("Consolas", s, st); }
-    public static Font Sans(float s) { return F("Segoe UI", s, FontStyle.Regular); }
-    public static Font SansBold(float s) { return F("Segoe UI Semibold", s, FontStyle.Regular); }
+    public static Font Serif(float s, FontStyle st) { return (st & FontStyle.Bold) != 0 ? SansBold(s) : Sans(s); }
+    public static Font Mono(float s, FontStyle st) { return F(MonoName, s, st); }
+    public static Font Sans(float s) { return F(SansName, s, FontStyle.Regular); }
+    public static Font SansBold(float s) { return Variable ? F(SansName, s, FontStyle.Bold) : F("Segoe UI Semibold", s, FontStyle.Regular); }
 
     // Honors the Windows "animation effects" setting, the desktop equivalent of prefers-reduced-motion.
     public static bool ReducedMotion { get { return !SystemInformation.UIEffectsEnabled; } }
@@ -215,20 +227,31 @@ static class Ui
         return f;
     }
 
-    private static TextureBrush _grid;
-    public static void DrawGrid(Graphics g, Rectangle r)
+    public static GraphicsPath Round(RectangleF r, float rad)
     {
-        if (_grid == null)
+        float d = Math.Max(0.01f, Math.Min(rad * 2f, Math.Min(r.Width, r.Height)));
+        GraphicsPath p = new GraphicsPath();
+        p.AddArc(r.X, r.Y, d, d, 180, 90);
+        p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+        p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+        p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+        p.CloseFigure();
+        return p;
+    }
+
+    // A soft radial light behind the subject: the only "gradient" in the app.
+    public static void Glow(Graphics g, PointF center, float radius, Color c, int alpha)
+    {
+        using (GraphicsPath p = new GraphicsPath())
         {
-            Bitmap b = new Bitmap(24, 24);
-            using (Graphics gg = Graphics.FromImage(b))
+            p.AddEllipse(center.X - radius, center.Y - radius, radius * 2, radius * 2);
+            using (PathGradientBrush b = new PathGradientBrush(p))
             {
-                gg.Clear(Paper);
-                b.SetPixel(0, 0, GridLine);
+                b.CenterColor = Alpha(c, alpha);
+                b.SurroundColors = new Color[] { Alpha(c, 0) };
+                g.FillPath(b, p);
             }
-            _grid = new TextureBrush(b);
         }
-        g.FillRectangle(_grid, r);
     }
 
     public static void Tri(Graphics g, Color c, PointF a, PointF b, PointF d)
@@ -288,7 +311,7 @@ class Stage : Panel
     {
         DoubleBuffered = true;
         ResizeRedraw = true;
-        BackColor = Ui.Paper;
+        BackColor = Ui.Glass;
         _timer.Interval = 15;
         _timer.Tick += delegate
         {
@@ -333,30 +356,84 @@ class Stage : Panel
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-        Ui.DrawGrid(g, ClientRectangle);
+        g.Clear(Ui.Glass);
+        Ui.Glow(g, new PointF(Width / 2f, Height * 0.56f), Math.Max(Width, Height) * 0.5f, Ui.Accent, 16);
         if (Caption.Length > 0)
-            using (Brush b = new SolidBrush(CaptionError ? Ui.Err : Ui.Ink))
-                g.DrawString(Caption, Ui.Serif(13f, FontStyle.Italic), b, new RectangleF(28, 20, Width - 56, 56));
+            using (Brush b = new SolidBrush(CaptionError ? Ui.Err : Ui.Mix(Ui.Ink, Ui.Muted, 0.2f)))
+                g.DrawString(Caption, Ui.Sans(11.5f), b, new RectangleF(28, 20, Width - 56, 56));
+    }
+
+    protected static void DrawWell(Graphics g, RectangleF r)
+    {
+        using (GraphicsPath p = Ui.Round(r, 18f))
+        using (Brush b = new SolidBrush(Ui.Alpha(Ui.Well, 235)))
+        using (Pen pen = new Pen(Ui.Alpha(Color.White, 15)))
+        {
+            g.FillPath(b, p);
+            g.DrawPath(pen, p);
+        }
     }
 
     protected static void DrawBox(Graphics g, RectangleF r, int value, bool active, float alpha, Font f)
     {
         int a = (int)(255 * Math.Max(0f, Math.Min(1f, alpha)));
         if (a <= 0) return;
-        using (Brush b = new SolidBrush(Ui.Alpha(active ? Ui.Accent : Ui.Paper2, a))) g.FillRectangle(b, r);
-        using (Pen p = new Pen(Ui.Alpha(active ? Ui.AccentDk : Ui.Line, a), 1.5f)) g.DrawRectangle(p, r.X, r.Y, r.Width, r.Height);
-        using (Brush t = new SolidBrush(Ui.Alpha(active ? Ui.Paper : Ui.Ink, a)))
+        float rad = Math.Min(11f, r.Height * 0.24f);
+        if (active)
+            for (int i = 3; i >= 1; i--)
+                using (GraphicsPath glow = Ui.Round(RectangleF.Inflate(r, i * 3, i * 3), rad + i * 3))
+                using (Brush gb = new SolidBrush(Ui.Alpha(Ui.Accent, (int)(a * 0.06f)))) g.FillPath(gb, glow);
+        using (GraphicsPath path = Ui.Round(r, rad))
+        {
+            if (active)
+                using (LinearGradientBrush b = new LinearGradientBrush(r, Ui.Alpha(Ui.Mix(Ui.Accent, Color.White, 0.16f), a), Ui.Alpha(Ui.Accent, a), 90f))
+                    g.FillPath(b, path);
+            else
+                using (Brush b = new SolidBrush(Ui.Alpha(Ui.Paper2, a))) g.FillPath(b, path);
+            using (Pen p = new Pen(Ui.Alpha(Color.White, (int)(a * (active ? 0.38f : 0.13f))))) g.DrawPath(p, path);
+            using (Pen sheen = new Pen(Ui.Alpha(Color.White, (int)(a * 0.16f))))
+                g.DrawLine(sheen, r.X + rad, r.Y + 1.5f, r.Right - rad, r.Y + 1.5f);
+        }
+        using (Brush t = new SolidBrush(Ui.Alpha(active ? Color.White : Ui.Ink, a)))
         using (StringFormat sf = Ui.Center())
             g.DrawString(value.ToString(), f, t, r, sf);
     }
 
     protected static void DrawEmptySlot(Graphics g, RectangleF r)
     {
-        using (Pen p = new Pen(Ui.Rule))
+        using (GraphicsPath path = Ui.Round(r, Math.Min(11f, r.Height * 0.24f)))
+        using (Pen p = new Pen(Ui.Alpha(Color.White, 24)))
         {
             p.DashStyle = DashStyle.Dot;
-            g.DrawRectangle(p, r.X, r.Y, r.Width, r.Height);
+            g.DrawPath(p, path);
         }
+    }
+
+    // Pill label for a pointer (top, front, rear). Returns its right edge.
+    protected static float Pill(Graphics g, string text, float x, float cy, bool center)
+    {
+        Font f = Ui.SansBold(9.5f);
+        float w;
+        using (StringFormat m = new StringFormat(StringFormat.GenericTypographic)) w = g.MeasureString(text, f, 400, m).Width + 22;
+        RectangleF r = new RectangleF(center ? x - w / 2f : x, cy - 11f, w, 22f);
+        using (GraphicsPath p = Ui.Round(r, 11f))
+        using (Brush b = new SolidBrush(Ui.Alpha(Ui.Accent, 40)))
+        using (Pen pen = new Pen(Ui.Alpha(Ui.Accent, 120)))
+        {
+            g.FillPath(b, p);
+            g.DrawPath(pen, p);
+        }
+        using (Brush t = new SolidBrush(Ui.Mix(Ui.Accent, Color.White, 0.45f)))
+        using (StringFormat c = Ui.Center())
+            g.DrawString(text, f, t, r, c);
+        return r.Right;
+    }
+
+    protected void Ring(Graphics g, RectangleF r)
+    {
+        r.Inflate(Pulse.E * 9f, Pulse.E * 9f);
+        using (GraphicsPath p = Ui.Round(r, 11f + Pulse.E * 9f))
+        using (Pen pen = new Pen(Ui.Alpha(Ui.Accent, (int)(220 * (1f - Pulse.E))), 2f)) g.DrawPath(pen, p);
     }
 
     protected static Font ValueFont(float size)
@@ -403,8 +480,8 @@ class StackStage : Stage
         Graphics g = e.Graphics;
         PaintBackdrop(g);
         int count = _items.Length;
-        float bottom = Height - 48f;
-        float slotH = Math.Max(16f, Math.Min(52f, (bottom - 64f) / _cap));
+        float bottom = Height - 56f;
+        float slotH = Math.Max(16f, Math.Min(52f, (bottom - 96f) / _cap));
         float w = Math.Max(120f, Math.Min(260f, Width - 320f));
         float left = (Width - w) / 2f - 30f, right = left + w;
         float tubeTop = bottom - slotH * _cap;
@@ -414,13 +491,15 @@ class StackStage : Stage
         GraphicsState st = g.Save();
         g.TranslateTransform(ShakeX, 0);
 
+        DrawWell(g, new RectangleF(left - 12, tubeTop - 12, w + 24, bottom - tubeTop + 24));
+
         for (int i = 0; i < _cap; i++)
         {
             RectangleF slot = new RectangleF(left, bottom - (i + 1) * slotH, w, slotH);
             RectangleF box = RectangleF.Inflate(slot, -6, -3);
             using (Brush b = new SolidBrush(Ui.Muted))
             using (StringFormat far = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center })
-                g.DrawString(i.ToString(), Ui.Mono(9f, FontStyle.Regular), b, new RectangleF(left - 54, slot.Y, 40, slotH), far);
+                g.DrawString(i.ToString(), Ui.Mono(9f, FontStyle.Regular), b, new RectangleF(left - 62, slot.Y, 40, slotH), far);
             if (i >= count) { DrawEmptySlot(g, box); continue; }
             if (i < _common) { DrawBox(g, box, _items[i], i == count - 1, 1f, vf); continue; }
 
@@ -444,30 +523,19 @@ class StackStage : Stage
             }
         }
 
-        using (Pen wall = new Pen(Ui.Line, 2.5f))
-        {
-            wall.LineJoin = LineJoin.Miter;
-            g.DrawLines(wall, new PointF[] { new PointF(left, tubeTop - 10), new PointF(left, bottom), new PointF(right, bottom), new PointF(right, tubeTop - 10) });
-        }
-
         if (count == 0 && !Slide.On)
             using (Brush b = new SolidBrush(Ui.Muted))
             using (StringFormat sf = Ui.Center())
-                g.DrawString("empty", Ui.Serif(13f, FontStyle.Italic), b, new RectangleF(left, bottom - slotH * 2, w, slotH * 2), sf);
+                g.DrawString("empty", Ui.Sans(12f), b, new RectangleF(left, bottom - slotH, w, slotH), sf);
 
         float py = Ui.Lerp(PointerY(_prev.Length, bottom, slotH), PointerY(count, bottom, slotH), ease);
-        Ui.Tri(g, Ui.Accent, new PointF(right + 10, py), new PointF(right + 24, py - 8), new PointF(right + 24, py + 8));
-        using (Brush b = new SolidBrush(Ui.Accent))
-            g.DrawString("top", Ui.Serif(13f, FontStyle.Italic), b, right + 30, py - 11);
+        Ui.Tri(g, Ui.Alpha(Ui.Accent, 120), new PointF(right + 20, py), new PointF(right + 31, py - 6), new PointF(right + 31, py + 6));
+        float tagEnd = Pill(g, "top", right + 30, py, false);
         using (Brush b = new SolidBrush(Ui.Muted))
-            g.DrawString("= " + (count - 1), Ui.Mono(10f, FontStyle.Regular), b, right + 62, py - 8);
+            g.DrawString("= " + (count - 1), Ui.Mono(10f, FontStyle.Regular), b, tagEnd + 8, py - 8);
 
         if (Pulse.On && count > 0)
-        {
-            RectangleF top = RectangleF.Inflate(new RectangleF(left, bottom - count * slotH, w, slotH), -6, -3);
-            top.Inflate(Pulse.E * 9f, Pulse.E * 9f);
-            using (Pen p = new Pen(Ui.Alpha(Ui.Accent, (int)(220 * (1f - Pulse.E))), 2f)) g.DrawRectangle(p, top.X, top.Y, top.Width, top.Height);
-        }
+            Ring(g, RectangleF.Inflate(new RectangleF(left, bottom - count * slotH, w, slotH), -6, -3));
         g.Restore(st);
     }
 }
@@ -515,13 +583,15 @@ class QueueStage : Stage
         GraphicsState st = g.Save();
         g.TranslateTransform(ShakeX, 0);
 
+        DrawWell(g, new RectangleF(left - 12, top - 12, total + 24, slotH + 24));
+
         for (int i = 0; i < _cap; i++)
         {
             RectangleF slot = new RectangleF(left + i * slotW, top, slotW, slotH);
             RectangleF box = RectangleF.Inflate(slot, -3, -6);
             using (Brush b = new SolidBrush(Ui.Muted))
             using (StringFormat sf = Ui.Center())
-                g.DrawString(i.ToString(), Ui.Mono(9f, FontStyle.Regular), b, new RectangleF(slot.X, top + slotH + 12, slotW, 16), sf);
+                g.DrawString(i.ToString(), Ui.Mono(9f, FontStyle.Regular), b, new RectangleF(slot.X, top + slotH + 18, slotW, 16), sf);
             if (i >= count) { DrawEmptySlot(g, box); continue; }
             RectangleF moved = box;
             float alpha = 1f;
@@ -536,46 +606,33 @@ class QueueStage : Stage
             DrawBox(g, ghost, _prev[0], true, 1f - ease, vf);
         }
 
-        using (Pen rail = new Pen(Ui.Line, 2.5f))
-        {
-            g.DrawLine(rail, left - 14, top - 4, left + total + 14, top - 4);
-            g.DrawLine(rail, left - 14, top + slotH + 4, left + total + 14, top + slotH + 4);
-        }
         using (Brush b = new SolidBrush(Ui.Muted))
         using (StringFormat far = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center })
         using (StringFormat near = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center })
         {
-            g.DrawString("← dequeue", Ui.Serif(12f, FontStyle.Italic), b, new RectangleF(left - 130, top, 108, slotH), far);
-            g.DrawString("enqueue →", Ui.Serif(12f, FontStyle.Italic), b, new RectangleF(left + total + 22, top, 108, slotH), near);
+            g.DrawString("← dequeue", Ui.Sans(10.5f), b, new RectangleF(left - 130, top, 108, slotH), far);
+            g.DrawString("enqueue →", Ui.Sans(10.5f), b, new RectangleF(left + total + 22, top, 108, slotH), near);
         }
 
         if (count == 0 && !Slide.On)
             using (Brush b = new SolidBrush(Ui.Muted))
             using (StringFormat sf = Ui.Center())
-                g.DrawString("empty", Ui.Serif(13f, FontStyle.Italic), b, new RectangleF(left, top, total, slotH), sf);
+                g.DrawString("empty", Ui.Sans(12f), b, new RectangleF(left, top, total, slotH), sf);
 
         if (count > 0)
         {
             float fx = left + slotW / 2f;
-            Ui.Tri(g, Ui.Accent, new PointF(fx, top - 12), new PointF(fx - 7, top - 25), new PointF(fx + 7, top - 25));
-            using (Brush b = new SolidBrush(Ui.Accent))
-            using (StringFormat sf = Ui.Center())
-                g.DrawString("front", Ui.Serif(13f, FontStyle.Italic), b, new RectangleF(fx - 40, top - 50, 80, 22), sf);
+            Ui.Tri(g, Ui.Alpha(Ui.Accent, 120), new PointF(fx, top - 14), new PointF(fx - 6, top - 25), new PointF(fx + 6, top - 25));
+            Pill(g, "front", fx, top - 37, true);
             float fromRear = _prev.Length > 0 ? left + (_prev.Length - 0.5f) * slotW : left + (count - 0.5f) * slotW;
             float rx = Ui.Lerp(fromRear, left + (count - 0.5f) * slotW, ease);
-            float ry = top + slotH + 36;
-            Ui.Tri(g, Ui.Accent, new PointF(rx, ry), new PointF(rx - 7, ry + 13), new PointF(rx + 7, ry + 13));
-            using (Brush b = new SolidBrush(Ui.Accent))
-            using (StringFormat sf = Ui.Center())
-                g.DrawString("rear", Ui.Serif(13f, FontStyle.Italic), b, new RectangleF(rx - 40, ry + 14, 80, 22), sf);
+            float ry = top + slotH + 44;
+            Ui.Tri(g, Ui.Alpha(Ui.Accent, 120), new PointF(rx, ry), new PointF(rx - 6, ry + 11), new PointF(rx + 6, ry + 11));
+            Pill(g, "rear", rx, ry + 24, true);
         }
 
         if (Pulse.On && count > 0)
-        {
-            RectangleF f = RectangleF.Inflate(new RectangleF(left, top, slotW, slotH), -3, -6);
-            f.Inflate(Pulse.E * 9f, Pulse.E * 9f);
-            using (Pen p = new Pen(Ui.Alpha(Ui.Accent, (int)(220 * (1f - Pulse.E))), 2f)) g.DrawRectangle(p, f.X, f.Y, f.Width, f.Height);
-        }
+            Ring(g, RectangleF.Inflate(new RectangleF(left, top, slotW, slotH), -3, -6));
         g.Restore(st);
     }
 }
@@ -716,23 +773,29 @@ class CalcView : Stage
     }
 }
 
-class TabStrip : Stage
+// Source-list navigation, like a Mac sidebar: grouped rows, one selection pill that glides between them.
+class SidebarNav : Stage
 {
-    private string[] _names;
+    private string[] _names, _groups;
+    private int[] _groupAt;
     private int _sel, _prevSel, _hover = -1;
     public event Action<int> Selected;
+    private const float ItemH = 34f, HeadH = 28f;
 
-    public TabStrip(string[] names) { _names = names; }
+    public SidebarNav(string[] names, string[] groups, int[] groupAt)
+    {
+        _names = names; _groups = groups; _groupAt = groupAt;
+    }
 
     private RectangleF[] Rects()
     {
         RectangleF[] r = new RectangleF[_names.Length];
-        float x = 0;
+        float y = 2;
         for (int i = 0; i < r.Length; i++)
         {
-            float w = TextRenderer.MeasureText(_names[i], Ui.SansBold(10.5f)).Width + 12;
-            r[i] = new RectangleF(x, 0, w, Height);
-            x += w + 14;
+            if (Array.IndexOf(_groupAt, i) >= 0) y += HeadH + (i > 0 ? 10 : 0);
+            r[i] = new RectangleF(4, y, Width - 8, ItemH);
+            y += ItemH + 2;
         }
         return r;
     }
@@ -766,18 +829,41 @@ class TabStrip : Stage
     protected override void OnPaint(PaintEventArgs e)
     {
         Graphics g = e.Graphics;
-        g.Clear(Ui.Paper);
+        g.Clear(Ui.Glass);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         RectangleF[] r = Rects();
+
+        for (int k = 0; k < _groups.Length; k++)
+            using (Brush b = new SolidBrush(Ui.Muted))
+            using (StringFormat sf = new StringFormat { LineAlignment = StringAlignment.Far })
+                g.DrawString(_groups[k].ToUpperInvariant(), Ui.SansBold(8f), b, new RectangleF(14, r[_groupAt[k]].Y - HeadH, Width - 20, HeadH - 4), sf);
+
+        if (_hover >= 0 && _hover != _sel)
+            using (GraphicsPath p = Ui.Round(r[_hover], 9f))
+            using (Brush b = new SolidBrush(Ui.Alpha(Color.White, 10))) g.FillPath(b, p);
+
+        RectangleF pill = new RectangleF(
+            Ui.Lerp(r[_prevSel].X, r[_sel].X, Slide.E), Ui.Lerp(r[_prevSel].Y, r[_sel].Y, Slide.E),
+            Ui.Lerp(r[_prevSel].Width, r[_sel].Width, Slide.E), ItemH);
+        using (GraphicsPath p = Ui.Round(pill, 9f))
+        using (Brush b = new SolidBrush(Ui.Alpha(Color.White, 22)))
+        using (Pen pen = new Pen(Ui.Alpha(Color.White, 18)))
+        {
+            g.FillPath(b, p);
+            g.DrawPath(pen, p);
+        }
+
         for (int i = 0; i < r.Length; i++)
         {
-            Color c = i == _sel || i == _hover ? Ui.Ink : Ui.Muted;
-            using (Brush b = new SolidBrush(c))
-            using (StringFormat sf = Ui.Center())
-                g.DrawString(_names[i], Ui.SansBold(10.5f), b, new RectangleF(r[i].X, 2, r[i].Width, Height - 2), sf);
+            bool on = i == _sel;
+            using (Brush b = new SolidBrush(on || i == _hover ? Ui.Ink : Ui.Mix(Ui.Muted, Ui.Ink, 0.25f)))
+            using (StringFormat sf = new StringFormat { LineAlignment = StringAlignment.Center })
+                g.DrawString(_names[i], on ? Ui.SansBold(10.5f) : Ui.Sans(10.5f), b, new RectangleF(r[i].X + 14, r[i].Y, r[i].Width - 70, ItemH), sf);
+            using (Brush b = new SolidBrush(Ui.Alpha(Ui.Muted, on ? 255 : 150)))
+            using (StringFormat far = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center })
+                g.DrawString("Ctrl+" + (i + 1), Ui.Sans(8f), b, new RectangleF(r[i].X, r[i].Y, r[i].Width - 12, ItemH), far);
         }
-        float x = Ui.Lerp(r[_prevSel].X, r[_sel].X, Slide.E), w = Ui.Lerp(r[_prevSel].Width, r[_sel].Width, Slide.E);
-        using (Brush b = new SolidBrush(Ui.Accent)) g.FillRectangle(b, x, Height - 3, w, 3);
     }
 }
 
@@ -786,7 +872,9 @@ enum InkStyle { Primary, Secondary, Quiet, Accent }
 class InkButton : Button
 {
     public InkStyle Style = InkStyle.Secondary;
-    private bool _hover, _down;
+    private bool _over, _down;
+    private float _h; // hover amount 0..1, eased toward the pointer state so colour never snaps
+    private Timer _fade = new Timer();
 
     public InkButton()
     {
@@ -796,59 +884,89 @@ class InkButton : Button
         Size = new Size(80, 34);
         Margin = new Padding(0, 0, 8, 0);
         Font = Ui.SansBold(9.5f);
+        _fade.Interval = 15;
+        _fade.Tick += delegate
+        {
+            float target = _over ? 1f : 0f;
+            _h += (target - _h) * 0.35f;
+            if (Math.Abs(target - _h) < 0.02f) { _h = target; _fade.Stop(); }
+            Invalidate();
+        };
     }
 
-    protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
-    protected override void OnMouseLeave(EventArgs e) { _hover = false; _down = false; Invalidate(); base.OnMouseLeave(e); }
+    private void Fade()
+    {
+        if (Ui.ReducedMotion) { _h = _over ? 1f : 0f; Invalidate(); }
+        else _fade.Start();
+    }
+
+    protected override void OnMouseEnter(EventArgs e) { _over = true; Fade(); base.OnMouseEnter(e); }
+    protected override void OnMouseLeave(EventArgs e) { _over = false; _down = false; Fade(); base.OnMouseLeave(e); }
     protected override void OnMouseDown(MouseEventArgs e) { _down = true; Invalidate(); base.OnMouseDown(e); }
     protected override void OnMouseUp(MouseEventArgs e) { _down = false; Invalidate(); base.OnMouseUp(e); }
     protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
     protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
     protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
 
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _fade.Dispose();
+        base.Dispose(disposing);
+    }
+
     protected override void OnPaint(PaintEventArgs e)
     {
         Graphics g = e.Graphics;
-        g.Clear(Parent != null ? Parent.BackColor : Ui.Paper);
+        g.Clear(Parent != null ? Parent.BackColor : Ui.Glass);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         // Pressing shrinks the face by a pixel each side: the 0.97 scale of the web, in pixels.
-        Rectangle r = _down && Enabled ? new Rectangle(1, 1, Width - 3, Height - 3) : new Rectangle(0, 0, Width - 1, Height - 1);
+        bool press = _down && Enabled;
+        RectangleF r = press ? new RectangleF(1.5f, 1.5f, Width - 3, Height - 3) : new RectangleF(0.5f, 0.5f, Width - 1, Height - 1);
         Color ink = Ui.Ink;
-        if (!Enabled) ink = Ui.Mix(Ui.Paper, Ui.Ink, 0.28f);
+        Color fill = Color.Empty, edge = Color.Empty;
+
+        if (!Enabled)
+        {
+            ink = Ui.Mix(Ui.Glass, Ui.Ink, 0.28f);
+            if (Style != InkStyle.Quiet) edge = Ui.Rule;
+        }
         else if (Style == InkStyle.Primary)
         {
-            using (Brush b = new SolidBrush(_down ? Ui.AccentDk : _hover ? Ui.Accent : Ui.Ink)) g.FillRectangle(b, r);
-            ink = Ui.Paper;
+            fill = press ? Ui.AccentDk : Ui.Mix(Ui.Accent, Color.White, 0.14f * _h);
+            edge = Ui.Alpha(Color.White, 40);
+            ink = Color.White;
         }
         else if (Style == InkStyle.Accent)
         {
-            using (Brush b = new SolidBrush(_down ? Ui.AccentDk : _hover ? Ui.Mix(Ui.Accent, Color.White, 0.15f) : Ui.Accent)) g.FillRectangle(b, r);
-            ink = Ui.Paper;
+            fill = Ui.Alpha(Ui.Accent, (int)(40 + 30 * _h + (press ? 20 : 0)));
+            edge = Ui.Alpha(Ui.Accent, 150);
+            ink = Ui.Mix(Ui.Accent, Color.White, 0.4f);
         }
         else if (Style == InkStyle.Secondary)
         {
-            using (Brush b = new SolidBrush(_down ? Ui.Mix(Ui.Paper, Ui.Ink, 0.14f) : _hover ? Ui.Mix(Ui.Paper, Ui.Ink, 0.07f) : Ui.Paper)) g.FillRectangle(b, r);
-            using (Pen p = new Pen(Ui.Line)) g.DrawRectangle(p, r);
+            fill = Ui.Mix(Ui.Glass, Color.White, press ? 0.15f : 0.07f + 0.06f * _h);
+            edge = Ui.Alpha(Color.White, 22);
         }
-        else ink = _hover ? Ui.Accent : Ui.Muted;
+        else ink = Ui.Mix(Ui.Muted, Ui.Ink, _h);
 
-        if (!Enabled && Style != InkStyle.Quiet)
-            using (Pen p = new Pen(Ui.Rule)) g.DrawRectangle(p, r);
+        using (GraphicsPath path = Ui.Round(r, 9f))
+        {
+            if (!fill.IsEmpty) using (Brush b = new SolidBrush(fill)) g.FillPath(b, path);
+            if (!edge.IsEmpty) using (Pen p = new Pen(edge)) g.DrawPath(p, path);
+            if (Enabled && Style == InkStyle.Primary)
+                using (Pen sheen = new Pen(Ui.Alpha(Color.White, 50))) g.DrawLine(sheen, r.X + 9, r.Y + 1.5f, r.Right - 9, r.Y + 1.5f);
+            if (Focused && ShowFocusCues)
+                using (Pen f = new Pen(Ui.Alpha(Ui.Accent, 200), 2f)) g.DrawPath(f, path);
+        }
 
         using (Brush t = new SolidBrush(ink))
         using (StringFormat sf = Ui.Center())
             g.DrawString(Text, Font, t, new RectangleF(r.X, r.Y, r.Width + 1, r.Height + 1), sf);
-        if (Style == InkStyle.Quiet && _hover && Enabled)
-        {
-            SizeF sz = g.MeasureString(Text, Font);
-            using (Pen u = new Pen(Ui.Accent)) g.DrawLine(u, (Width - sz.Width) / 2f + 4, Height / 2f + 10, (Width + sz.Width) / 2f - 4, Height / 2f + 10);
-        }
-        if (Focused && ShowFocusCues)
-            using (Pen f = new Pen(Ui.Accent) { DashStyle = DashStyle.Dot }) g.DrawRectangle(f, 3, 3, Width - 7, Height - 7);
     }
 }
 
-// Underlined field: no box, so the toolbar reads as one line of a notebook.
+// Recessed rounded field. The focus ring fades in as a soft blue halo.
 class LineInput : Panel
 {
     private TextBox _box = new TextBox();
@@ -857,13 +975,13 @@ class LineInput : Panel
     public LineInput(string cue, int width)
     {
         DoubleBuffered = true;
-        Size = new Size(width, 34);
+        Size = new Size(width, 38);
         Margin = new Padding(0, 0, 12, 0);
-        BackColor = Ui.Side;
+        BackColor = Ui.Glass;
         _box.BorderStyle = BorderStyle.None;
-        _box.BackColor = Ui.Side;
+        _box.BackColor = Ui.Well;
         _box.ForeColor = Ui.Ink;
-        _box.Font = Ui.Mono(12f, FontStyle.Regular);
+        _box.Font = Ui.Mono(11.5f, FontStyle.Regular);
         _box.GotFocus += delegate { Invalidate(); };
         _box.LostFocus += delegate { Invalidate(); };
         _box.KeyDown += delegate (object s, KeyEventArgs e)
@@ -876,7 +994,7 @@ class LineInput : Panel
         };
         Ui.CueBanner(_box, cue);
         Controls.Add(_box);
-        Layout += delegate { _box.SetBounds(2, 6, Math.Max(10, Width - 4), _box.Height); };
+        Layout += delegate { _box.SetBounds(12, Math.Max(0, (Height - _box.Height) / 2), Math.Max(10, Width - 24), _box.Height); };
     }
 
     public override string Text { get { return _box.Text; } set { _box.Text = value; } }
@@ -886,9 +1004,17 @@ class LineInput : Panel
 
     protected override void OnPaint(PaintEventArgs e)
     {
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
         bool f = _box.Focused;
-        using (Brush b = new SolidBrush(f ? Ui.Accent : Ui.Line))
-            e.Graphics.FillRectangle(b, 0, Height - (f ? 2 : 1), Width, f ? 2 : 1);
+        RectangleF r = new RectangleF(1.5f, 1.5f, Width - 4, Height - 4);
+        using (GraphicsPath p = Ui.Round(r, 9f))
+        {
+            if (f)
+                using (Pen halo = new Pen(Ui.Alpha(Ui.Accent, 70), 3f)) g.DrawPath(halo, p);
+            using (Brush b = new SolidBrush(Ui.Well)) g.FillPath(b, p);
+            using (Pen pen = new Pen(f ? Ui.Accent : Ui.Alpha(Color.White, 22), f ? 1.5f : 1f)) g.DrawPath(pen, p);
+        }
     }
 }
 
@@ -905,18 +1031,48 @@ class PostfixStep
 //  Main form: three parts. Display (left), Controls (right), Journal (bottom).
 // =====================================================================
 
+// A pane of "glass": rounded charcoal surface with a hairline that is brighter on top, where light lands.
+// Children sit inside the 6px padding so their square corners never poke past the curve.
+class GlassPanel : Panel
+{
+    public GlassPanel()
+    {
+        DoubleBuffered = true;
+        ResizeRedraw = true;
+        BackColor = Ui.Paper;
+        Dock = DockStyle.Fill;
+        Padding = new Padding(6);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        if (Width < 4 || Height < 4) return;
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using (GraphicsPath p = Ui.Round(new RectangleF(0.5f, 0.5f, Width - 2, Height - 2), 16f))
+        using (Brush b = new SolidBrush(Ui.Glass))
+        using (LinearGradientBrush lb = new LinearGradientBrush(new Rectangle(0, 0, Width, Height), Ui.Alpha(Color.White, 48), Ui.Alpha(Color.White, 12), 90f))
+        using (Pen pen = new Pen(lb, 1f))
+        {
+            g.FillPath(b, p);
+            g.DrawPath(pen, p);
+        }
+    }
+}
+
 class PaneHeader : Panel
 {
     public string Title = "";
     public string Status = "";
     public bool Hot;
     public bool TopRule;
+    public bool Prominent;
 
     public PaneHeader()
     {
         DoubleBuffered = true;
         ResizeRedraw = true;
-        BackColor = Ui.Side;
+        BackColor = Ui.Glass;
         Dock = DockStyle.Fill;
         Margin = new Padding(0);
     }
@@ -927,19 +1083,25 @@ class PaneHeader : Panel
     protected override void OnPaint(PaintEventArgs e)
     {
         Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         using (Pen p = new Pen(Ui.Rule))
         {
             if (TopRule) g.DrawLine(p, 0, 0, Width, 0);
-            g.DrawLine(p, 0, Height - 1, Width, Height - 1);
+            if (Prominent) g.DrawLine(p, 0, Height - 1, Width, Height - 1);
         }
         using (StringFormat mid = new StringFormat { LineAlignment = StringAlignment.Center })
         using (StringFormat far = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center })
         {
-            using (Brush b = new SolidBrush(Ui.Muted))
-                g.DrawString(Title.ToUpperInvariant(), Ui.SansBold(8.5f), b, new RectangleF(20, 0, Width - 40, Height), mid);
+            using (Brush b = new SolidBrush(Prominent ? Ui.Ink : Ui.Muted))
+                g.DrawString(Prominent ? Title : Title.ToUpperInvariant(), Prominent ? Ui.SansBold(11.5f) : Ui.SansBold(8f), b, new RectangleF(20, 0, Width - 40, Height), mid);
+            if (Status.Length == 0) return;
+            float tw = g.MeasureString(Status, Ui.Sans(9f)).Width;
             using (Brush b = new SolidBrush(Hot ? Ui.Accent : Ui.Muted))
+            {
                 g.DrawString(Status, Ui.Sans(9f), b, new RectangleF(20, 0, Width - 40, Height), far);
+                g.FillEllipse(b, Width - 20 - tw - 14, Height / 2f - 3f, 6f, 6f);
+            }
         }
     }
 }
@@ -950,7 +1112,7 @@ class StackForm : Form
     private Stack stack = new Stack(DefaultCapacity);
     private Queue queue = new Queue(DefaultCapacity);
     private bool stackStale, queueStale;
-    private TabStrip tabs;
+    private SidebarNav tabs;
     private StackStage stackStage = new StackStage();
     private QueueStage queueStage = new QueueStage();
     private CalcView calc = new CalcView();
@@ -966,8 +1128,8 @@ class StackForm : Form
 
     public StackForm()
     {
-        Text = "Stacks and Queues Laboratory";
-        ClientSize = new Size(1240, 780);
+        Text = "Data Structures";
+        ClientSize = new Size(1280, 800);
         MinimumSize = new Size(1040, 660);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Ui.Paper;
@@ -979,62 +1141,105 @@ class StackForm : Form
         binaryLesson = HintLesson("Decimal number", "Binary",
             "Enter a whole number and press Convert. It is divided by 2 step by step, and the remainders spell the binary number.");
 
+        // Three floating glass panes on a black window: sidebar | workspace | inspector.
         TableLayoutPanel root = new TableLayoutPanel();
         root.Dock = DockStyle.Fill;
-        root.ColumnCount = 1;
-        root.RowCount = 3;
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 1));
+        root.ColumnCount = 3;
+        root.RowCount = 1;
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 216));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 308));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.Padding = new Padding(10);
         root.BackColor = Ui.Paper;
         Controls.Add(root);
 
-        Panel header = new Panel();
-        header.Dock = DockStyle.Fill;
-        header.Margin = new Padding(0);
-        header.BackColor = Ui.Paper;
-        header.Paint += delegate (object s, PaintEventArgs e)
+        // Sidebar: brand, navigation, hint
+        GlassPanel sidebar = new GlassPanel();
+        sidebar.Margin = new Padding(0, 0, 5, 0);
+        root.Controls.Add(sidebar, 0, 0);
+        TableLayoutPanel sideRows = new TableLayoutPanel();
+        sideRows.Dock = DockStyle.Fill;
+        sideRows.ColumnCount = 1;
+        sideRows.RowCount = 3;
+        sideRows.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        sideRows.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        sideRows.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        sideRows.Margin = new Padding(0);
+        sideRows.BackColor = Ui.Glass;
+        sidebar.Controls.Add(sideRows);
+
+        Panel brand = new Panel();
+        brand.Dock = DockStyle.Fill;
+        brand.Margin = new Padding(0);
+        brand.BackColor = Ui.Glass;
+        brand.Paint += delegate (object s, PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+            RectangleF logo = new RectangleF(12, 16, 32, 32);
+            using (GraphicsPath p = Ui.Round(logo, 9f))
+            using (LinearGradientBrush lb = new LinearGradientBrush(logo, Ui.Mix(Ui.Accent, Color.White, 0.18f), Ui.AccentDk, 90f))
+                g.FillPath(lb, p);
+            // the mark: three stacked slabs, the top one lit
+            using (Brush w = new SolidBrush(Color.White))
+            using (Brush d = new SolidBrush(Ui.Alpha(Color.White, 120)))
+                for (int i = 0; i < 3; i++)
+                    using (GraphicsPath p = Ui.Round(new RectangleF(19, 22 + i * 7, 18, 4.5f), 2f))
+                        g.FillPath(i == 0 ? w : d, p);
+            using (Brush b = new SolidBrush(Ui.Ink))
+                g.DrawString("Data Structures", Ui.SansBold(11.5f), b, 52, 14);
+            using (Brush b = new SolidBrush(Ui.Muted))
+                g.DrawString("Interactive lab", Ui.Sans(8.5f), b, 53, 34);
+        };
+        sideRows.Controls.Add(brand, 0, 0);
+
+        tabs = new SidebarNav(new string[] { "Stack", "Queue", "Postfix", "Binary" },
+            new string[] { "Structures", "Algorithms" }, new int[] { 0, 2 });
+        tabs.Dock = DockStyle.Fill;
+        tabs.Margin = new Padding(4, 0, 4, 0);
+        tabs.Selected += delegate (int i) { SelectTab(i); };
+        sideRows.Controls.Add(tabs, 0, 1);
+
+        Panel foot = new Panel();
+        foot.Dock = DockStyle.Fill;
+        foot.Margin = new Padding(0);
+        foot.BackColor = Ui.Glass;
+        foot.Paint += delegate (object s, PaintEventArgs e)
         {
             e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-            using (Brush b = new SolidBrush(Ui.Ink))
-                e.Graphics.DrawString("Stacks & Queues", Ui.Serif(17f, FontStyle.Bold), b, 28, 12);
+            using (Brush b = new SolidBrush(Ui.Muted))
+            using (StringFormat sf = new StringFormat { LineAlignment = StringAlignment.Center })
+                e.Graphics.DrawString("Algorithms: ← → step, Space plays", Ui.Sans(8.5f), b, new RectangleF(14, 0, foot.Width - 14, foot.Height), sf);
         };
-        tabs = new TabStrip(new string[] { "Stack", "Queue", "Postfix", "Binary" });
-        tabs.SetBounds(262, 0, 520, 56);
-        tabs.Selected += delegate (int i) { SelectTab(i); };
-        header.Controls.Add(tabs);
-        root.Controls.Add(header, 0, 0);
-        root.Controls.Add(Rule(), 0, 1);
+        sideRows.Controls.Add(foot, 0, 2);
 
-        // Body: [display + journal] | rule | [controls]
-        TableLayoutPanel body = new TableLayoutPanel();
-        body.Dock = DockStyle.Fill;
-        body.ColumnCount = 3;
-        body.RowCount = 1;
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 1));
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300));
-        body.Margin = new Padding(0);
-        root.Controls.Add(body, 0, 2);
+        // Workspace: the visualization is the centerpiece, the journal sits quietly beneath it.
+        GlassPanel workspace = new GlassPanel();
+        workspace.Margin = new Padding(5, 0, 5, 0);
+        root.Controls.Add(workspace, 1, 0);
 
         TableLayoutPanel left = new TableLayoutPanel();
         left.Dock = DockStyle.Fill;
         left.ColumnCount = 1;
         left.RowCount = 4;
-        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
         left.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         left.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 190));
+        left.RowStyles.Add(new RowStyle(SizeType.Absolute, 170));
         left.Margin = new Padding(0);
-        body.Controls.Add(left, 0, 0);
-        body.Controls.Add(Rule(), 1, 0);
+        left.BackColor = Ui.Glass;
+        workspace.Controls.Add(left);
 
+        displayHeader.Prominent = true;
         displayHeader.SetTitle("Display");
         left.Controls.Add(displayHeader, 0, 0);
 
         Panel host = new Panel();
         host.Dock = DockStyle.Fill;
         host.Margin = new Padding(0);
+        host.BackColor = Ui.Glass;
         stackStage.Dock = DockStyle.Fill;
         queueStage.Dock = DockStyle.Fill;
         calc.Dock = DockStyle.Fill;
@@ -1058,12 +1263,12 @@ class StackForm : Form
         Panel journalPanel = new Panel();
         journalPanel.Dock = DockStyle.Fill;
         journalPanel.Margin = new Padding(0);
-        journalPanel.BackColor = Ui.Paper;
-        journalPanel.Padding = new Padding(20, 10, 12, 8);
+        journalPanel.BackColor = Ui.Glass;
+        journalPanel.Padding = new Padding(20, 6, 12, 8);
         journal.Dock = DockStyle.Fill;
         journal.ReadOnly = true;
         journal.BorderStyle = BorderStyle.None;
-        journal.BackColor = Ui.Paper;
+        journal.BackColor = Ui.Glass;
         journal.ForeColor = Ui.Ink;
         journal.Font = Ui.Mono(10f, FontStyle.Regular);
         journal.DetectUrls = false;
@@ -1072,23 +1277,27 @@ class StackForm : Form
         journalPanel.Controls.Add(journal);
         left.Controls.Add(journalPanel, 0, 3);
 
-        // Controls (right)
+        // Inspector: the controls for whatever is selected
+        GlassPanel inspector = new GlassPanel();
+        inspector.Margin = new Padding(5, 0, 0, 0);
+        root.Controls.Add(inspector, 2, 0);
         TableLayoutPanel right = new TableLayoutPanel();
         right.Dock = DockStyle.Fill;
         right.ColumnCount = 1;
         right.RowCount = 2;
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
         right.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         right.Margin = new Padding(0);
-        right.BackColor = Ui.Side;
-        body.Controls.Add(right, 2, 0);
+        right.BackColor = Ui.Glass;
+        inspector.Controls.Add(right);
         PaneHeader controlsHeader = new PaneHeader();
+        controlsHeader.Prominent = true;
         controlsHeader.SetTitle("Controls");
         right.Controls.Add(controlsHeader, 0, 0);
         Panel barHost = new Panel();
         barHost.Dock = DockStyle.Fill;
         barHost.Margin = new Padding(0);
-        barHost.BackColor = Ui.Side;
+        barHost.BackColor = Ui.Glass;
         barHost.SizeChanged += delegate { FitBars(); };
         right.Controls.Add(barHost, 0, 1);
 
@@ -1110,15 +1319,6 @@ class StackForm : Form
         RefreshStack(false);
         RefreshQueue(false);
         SelectTab(0);
-    }
-
-    private static Panel Rule()
-    {
-        Panel p = new Panel();
-        p.Dock = DockStyle.Fill;
-        p.Margin = new Padding(0);
-        p.BackColor = Ui.Rule;
-        return p;
     }
 
     // ---- Controls panel ------------------------------------------------------
@@ -1249,7 +1449,7 @@ class StackForm : Form
         queueStage.Visible = i == 1;
         calc.Visible = i >= 2;
         for (int k = 0; k < bars.Length; k++) bars[k].Visible = k == i;
-        displayHeader.SetTitle(i == 0 ? "Stack display" : i == 1 ? "Queue display" : i == 2 ? "Postfix calculation" : "Binary calculation");
+        displayHeader.SetTitle(i == 0 ? "Stack" : i == 1 ? "Queue" : i == 2 ? "Postfix evaluation" : "Decimal to binary");
         if (i >= 2)
         {
             bars[i].Controls.Add(transport);
