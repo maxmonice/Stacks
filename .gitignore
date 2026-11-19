@@ -1,0 +1,47 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rtifacts/
+
+# NuGet packages and generated dependencies
+packages/
+*.nupkg
+*.snupkg
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# VS Code
+.vscode/
+
+# Compiled files
+*.dll
+*.exe
+*.pdb
+*.cache
+
+# Generated files
+Generated/
+[Tt]emp/
+[Oo]ut/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
